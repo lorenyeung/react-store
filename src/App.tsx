@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * Copyright 2020 Google LLC
  *
@@ -16,6 +18,7 @@
 
 import './App.css';
 import { CartItemDetails, CategoryDetails, StoreData } from './data/store-data';
+import { Event, initialize } from '@harnessio/ff-javascript-client-sdk';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Route, BrowserRouter as Router, Switch } from 'react-router-dom';
 import Cart from './Store/Cart';
@@ -26,12 +29,51 @@ import Header from './Store/Header';
 import Home from './Store/Home';
 import ItemDetails from './Store/ItemDetails';
 import List from './Store/List';
+import { copyFile } from 'fs';
 
 function App() {
   const storeData = useMemo(() => new StoreData(), []);
   const [categories, setCategories] = useState([] as CategoryDetails[]);
   const [cart, setCart] = useState(storeData.getCart());
+  const [featureFlags, setFeatureFlags] = useState({});
 
+  useEffect(() => {
+    const cf = initialize(
+      '<your-sdk-key-here>',
+      {
+        identifier: 'harnessuabooleanflag',
+        attributes: {
+          lastUpdated: Date(),
+          host: window.location.href,
+        },
+      },
+      {
+        baseUrl: 'https://config.ff.harness.io/api/1.0',
+        eventUrl: 'https://events.ff.harness.io/api/1.0',
+      },
+    );
+
+    cf.on(Event.READY, flags => {
+      setFeatureFlags(flags);
+      console.log(flags);
+    });
+
+    cf.on(Event.CHANGED, flagInfo => {
+      console.log(flagInfo);
+      if (flagInfo.deleted) {
+        setFeatureFlags(currentFeatureFlags => {
+          delete currentFeatureFlags[flagInfo.flag];
+          return { ...currentFeatureFlags };
+        });
+      } else {
+        setFeatureFlags(currentFeatureFlags => ({ ...currentFeatureFlags, [flagInfo.flag]: flagInfo.value }));
+      }
+    });
+
+    return () => {
+      cf?.close();
+    };
+  }, []);
   useEffect(() => {
     storeData.getCategories().then(data => setCategories(data));
   }, [storeData]);
@@ -41,10 +83,12 @@ function App() {
     setCart(cart);
   }
 
+  let className = featureFlags.harnessuabooleanflag ? 'App.Left' : 'App';
+
   return (
     <CartContext.Provider value={{ cart, setCart: updateCart }}>
       <Router>
-        <div className="App">
+        <div className={className}>
           <Header />
           <Switch>
             <Route exact path="/">
